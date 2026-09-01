@@ -11,4 +11,11 @@ crate-type = ["cdylib"]
 [dependencies]
 spark-xxhash64-core = { path = "../spark-xxhash64-core" }
 quack-rs = "0.13"
+# libduckdb-sys encodes the DuckDB version it targets in its own version
+# number as 1.<DUCKDB_MAJOR><DUCKDB_MINOR_2DIGIT><DUCKDB_PATCH_2DIGIT>.x, e.g.
+# 1.10505.x == DuckDB 1.5.5 (see that crate's build.rs,
+# duckdb_version_from_pkg_version). ">=1.4.4, <2" is quack-rs's own
+# recommended bound for DuckDB 1.4.x/1.5.x support (both expose C API
+# version v1.2.0); the upper bound intentionally excludes a future major
+# libduckdb-sys release that might target a breaking DuckDB C API change.
 libduckdb-sys = { version = ">=1.4.4, <2", features = ["loadable-extension"] }

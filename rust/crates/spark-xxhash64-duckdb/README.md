@@ -42,6 +42,17 @@ the callback writes the seed itself. Skipping this gets you a
 plausible-looking but wrong answer (NULL instead of 42) -- there's no error
 to catch it.
 
+## Non-UTF-8 input
+
+`quack-rs`'s `VectorReader::read_str` (used to read the VARCHAR argument)
+returns an empty string, not an error, if the underlying bytes aren't
+valid UTF-8 -- so `spark_xxhash64` would silently hash `""` instead of the
+actual (invalid-UTF-8) bytes in that case. VARCHAR columns are supposed to
+always be valid UTF-8 in DuckDB, so this should only matter if you're
+somehow feeding it invalid data. Contrast with the Postgres extension,
+which panics (caught into a normal SQL `ERROR`, not a crash) instead of
+silently returning a wrong-but-plausible hash -- see that crate's README.
+
 ## Building and loading
 
 ```bash

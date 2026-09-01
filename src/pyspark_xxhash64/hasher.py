@@ -38,7 +38,9 @@ def _hash_bytes(data: bytes, seed: int) -> int:
 
 def _float_bits(value: float) -> int:
     # Mirrors Java's Float.floatToIntBits: canonicalizes every NaN bit
-    # pattern to a single representative value (floatToRawIntBits would not).
+    # pattern to a single representative value (floatToRawIntBits would not),
+    # and -- separately, floatToIntBits does *not* do this -- Spark
+    # special-cases -0.0 to hash identically to 0.0.
     if math.isnan(value):
         return _NAN_FLOAT32_BITS
     if value == 0.0 and math.copysign(1.0, value) < 0:
@@ -48,7 +50,8 @@ def _float_bits(value: float) -> int:
 
 
 def _double_bits(value: float) -> int:
-    # Mirrors Java's Double.doubleToLongBits (see _float_bits).
+    # Mirrors Java's Double.doubleToLongBits (see _float_bits for both the
+    # NaN canonicalization and the separate -0.0 special case).
     if math.isnan(value):
         return _NAN_FLOAT64_BITS
     if value == 0.0 and math.copysign(1.0, value) < 0:
@@ -61,12 +64,9 @@ def java_biginteger_bytes(n: int) -> bytes:
     """Minimal two's-complement big-endian bytes, matching Java's
     ``BigInteger.toByteArray()`` (used by Spark for ``Decimal`` values whose
     precision does not fit in a ``long``, i.e. precision > 18)."""
-    length = 1
-    while True:
-        try:
-            return n.to_bytes(length, "big", signed=True)
-        except OverflowError:
-            length += 1
+    magnitude_bits = n.bit_length() if n >= 0 else (~n).bit_length()
+    nbytes = magnitude_bits // 8 + 1
+    return n.to_bytes(nbytes, "big", signed=True)
 
 
 def decimal_to_unscaled(value: Decimal, scale: int) -> int:
@@ -87,12 +87,10 @@ def compute_hash(value: Any, dtype: Any, seed: int) -> int:
     *unsigned* 64-bit int (the running accumulator); the public API converts
     the final result to Spark's signed ``LongType`` representation."""
     if value is None:
+        # Covers NullType too: a NullType column's value is always None.
         return seed
 
     name = _type_name(dtype)
-
-    if name == "NullType":
-        return seed
 
     if name == "BooleanType":
         return _hash_int32(1 if value else 0, seed)
@@ -118,10 +116,8 @@ def compute_hash(value: Any, dtype: Any, seed: int) -> int:
     if name == "DecimalType":
         precision = getattr(dtype, "precision", 38)
         scale = getattr(dtype, "scale", 0)
-        if isinstance(value, Decimal):
-            unscaled = decimal_to_unscaled(value, scale)
-        else:
-            unscaled = int(value)
+        dec_value = value if isinstance(value, Decimal) else Decimal(str(value))
+        unscaled = decimal_to_unscaled(dec_value, scale)
         if precision <= 18:
             return _hash_int64(unscaled, seed)
         return _hash_bytes(java_biginteger_bytes(unscaled), seed)

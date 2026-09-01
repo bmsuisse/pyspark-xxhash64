@@ -61,9 +61,26 @@ def test_nan_hashes_are_canonicalized():
 
 
 def test_decimal_precision_boundary_uses_different_encodings():
-    small = compute_hash(Decimal("123.45"), T.DecimalType(10, 2), 42)
-    # Same numeric value, but forced through the byte-array path.
-    assert small != 0
+    # precision <= 18 hashes the unscaled value as a plain LongType long...
+    small = compute_hash(Decimal("1234.57"), T.DecimalType(10, 2), 42)
+    via_long = compute_hash(123457, T.LongType(), 42)
+    assert small == via_long
+
+    # ...while precision > 18 goes through the BigInteger-byte-array path
+    # instead, which must produce a different hash for the same number.
+    big = compute_hash(Decimal("1234.57"), T.DecimalType(30, 2), 42)
+    assert big != via_long
+
+
+def test_decimal_accepts_int_and_float_scaled_like_a_decimal():
+    # A bare int/float must be scaled by DecimalType's `scale`, same as an
+    # equal-valued Decimal -- not treated as an already-unscaled integer.
+    seed = 42
+    dtype = T.DecimalType(10, 2)
+    assert compute_hash(1234.57, dtype, seed) == compute_hash(Decimal("1234.57"), dtype, seed)
+
+    dtype0 = T.DecimalType(10, 0)
+    assert compute_hash(42, dtype0, seed) == compute_hash(Decimal("42"), dtype0, seed)
 
 
 def test_array_chains_like_a_struct_of_repeated_elements():

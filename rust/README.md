@@ -2,7 +2,7 @@
 
 Native, vectorized implementations of the Spark-compatible `xxhash64`, for
 when the pure-Python package (`../src/pyspark_xxhash64`) is too slow at
-scale. This is a Cargo workspace with two crates:
+scale. This is a Cargo workspace with four crates:
 
 - **`spark-xxhash64-core`** -- the actual logic: Spark's per-type byte
   encoding (mirrors `pyspark_xxhash64.hasher`) applied directly to Arrow

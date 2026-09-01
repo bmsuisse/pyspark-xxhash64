@@ -92,6 +92,23 @@ def test_timestamp_microsecond_and_nanosecond_truncation():
     assert out_ns == out_us  # nanosecond input truncates to microseconds, same as Spark's TimestampType
 
 
+def test_timestamp_millisecond_and_second_units():
+    ms = fast.xxhash64_array(pa.array([1234, None], type=pa.timestamp("ms"))).to_pylist()
+    s = fast.xxhash64_array(pa.array([5, None], type=pa.timestamp("s"))).to_pylist()
+    us_from_ms = fast.xxhash64_array(pa.array([1_234_000, None], type=pa.timestamp("us"))).to_pylist()
+    us_from_s = fast.xxhash64_array(pa.array([5_000_000, None], type=pa.timestamp("us"))).to_pylist()
+    assert ms == us_from_ms
+    assert s == us_from_s
+
+
+def test_negative_nanosecond_timestamp_floors_towards_negative_infinity():
+    # -1500ns floors to -2us (Spark's Math.floorDiv convention), not -1us
+    # truncated-toward-zero -- these differ for pre-1970 values.
+    ns = fast.xxhash64_array(pa.array([-1500], type=pa.timestamp("ns"))).to_pylist()
+    us = fast.xxhash64_array(pa.array([-2], type=pa.timestamp("us"))).to_pylist()
+    assert ns == us
+
+
 def test_decimal_precision_boundary():
     small = [Decimal("12345.67"), Decimal("-999.99"), None]
     out = fast.xxhash64_array(pa.array(small, type=pa.decimal128(10, 2))).to_pylist()

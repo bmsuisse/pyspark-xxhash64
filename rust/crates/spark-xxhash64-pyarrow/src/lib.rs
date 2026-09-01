@@ -1,3 +1,13 @@
+//! No `#[test]`s in this crate: `pyo3`'s `extension-module` feature (needed
+//! to build the loadable `.so` maturin ships) doesn't link against
+//! `libpython`, which is exactly what a plain `cargo test` binary needs --
+//! so tests here wouldn't link. Coverage is instead entirely transitive
+//! through `../../tests/test_arrow_fast.py`, which exercises this function
+//! (compiled via `maturin develop`) from Python for every supported type;
+//! the actual hashing logic being tested lives in `spark-xxhash64-core`,
+//! which does have its own `#[test]`s, and this crate is just a thin
+//! Arrow-C-Data-Interface conversion wrapper around it.
+
 use arrow::array::{make_array, Array, ArrayData};
 use arrow::pyarrow::{FromPyArrow, ToPyArrow};
 use pyo3::exceptions::{PyTypeError, PyValueError};

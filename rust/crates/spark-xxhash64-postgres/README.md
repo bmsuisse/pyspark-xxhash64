@@ -17,6 +17,12 @@ and extending to more types means adding more `#[pg_extern]` functions
 calling the matching `spark_xxhash64_core::scalar::hash_*` -- the hashing
 logic already exists.
 
+`spark_xxhash64_postgres.control` sets `trusted = true`: the function is
+pure and side-effect-free (`immutable, parallel_safe`), so there's no
+reason to require a superuser to install it -- a non-superuser database
+owner with `CREATE` on the target schema can `CREATE EXTENSION` it too
+(Postgres 13+'s trusted-extension mechanism).
+
 ## A real gotcha this surfaced (same shape as the DuckDB one)
 
 The function takes `Option<&str>`, not `&str`. pgrx makes a plain `&str`
@@ -26,6 +32,18 @@ the function at all -- SQL's usual NULL-in-NULL-out. That's *not* what
 Spark's `xxhash64(NULL)` does: Spark returns the seed (42) unchanged for a
 null single-column value. `Option<&str>` makes pgrx generate a non-STRICT
 function, so the Rust code sees the NULL and returns the seed itself.
+
+## Non-UTF-8 database encodings
+
+`spark_xxhash64` takes `Option<&str>`, which pgrx materializes from the
+`TEXT` datum's raw bytes. On a database whose encoding isn't UTF-8 (e.g.
+`SQL_ASCII` with non-ASCII bytes actually stored), that conversion can
+panic. pgrx catches panics at the `#[pg_extern]` boundary and turns them
+into an ordinary Postgres `ERROR` -- not a crash -- but it's still a
+possible failure mode worth knowing about if you're not on a UTF-8
+database. This differs from the DuckDB extension, which returns an empty
+string (a wrong hash, not an error) for invalid UTF-8 instead -- see that
+crate's README.
 
 ## Building and installing without root
 

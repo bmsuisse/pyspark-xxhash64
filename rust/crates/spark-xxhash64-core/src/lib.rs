@@ -206,10 +206,43 @@ pub fn hash_array(array: &dyn Array, seed: i64) -> Result<Int64Array, ArrowError
                     if arr.is_null(i) {
                         seed
                     } else {
-                        // Spark's TimestampType is microsecond-precision;
-                        // truncate (not round) to match integer division
-                        // semantics used when Spark itself downcasts.
+                        // Spark's TimestampType is microsecond-precision.
+                        // Floor (not truncate-toward-zero) division, matching
+                        // Spark's own time-unit conversions (DateTimeUtils
+                        // uses Math.floorDiv) -- these differ for negative
+                        // (pre-1970) values, e.g. -1500.div_euclid(1000) ==
+                        // -2, not -1. See the negative-timestamp test.
                         hash_i64(arr.value(i).div_euclid(1_000), seed_u) as i64
+                    }
+                })
+                .collect()
+        }
+        DataType::Timestamp(TimeUnit::Millisecond, _) => {
+            let arr = array
+                .as_any()
+                .downcast_ref::<TimestampMillisecondArray>()
+                .unwrap();
+            (0..len)
+                .map(|i| {
+                    if arr.is_null(i) {
+                        seed
+                    } else {
+                        hash_i64(arr.value(i) * 1_000, seed_u) as i64
+                    }
+                })
+                .collect()
+        }
+        DataType::Timestamp(TimeUnit::Second, _) => {
+            let arr = array
+                .as_any()
+                .downcast_ref::<TimestampSecondArray>()
+                .unwrap();
+            (0..len)
+                .map(|i| {
+                    if arr.is_null(i) {
+                        seed
+                    } else {
+                        hash_i64(arr.value(i) * 1_000_000, seed_u) as i64
                     }
                 })
                 .collect()
@@ -315,6 +348,35 @@ mod tests {
 
         let int_arr = Int32Array::from(vec![1234]);
         assert_eq!(hash_array(&int_arr, 10).unwrap().value(0), -1774215319882784110i64);
+    }
+
+    #[test]
+    fn timestamp_units_other_than_microsecond_convert_correctly() {
+        // 1234 ms == 1_234_000 us; 5 s == 5_000_000 us.
+        let ms = TimestampMillisecondArray::from(vec![1234]);
+        let s = TimestampSecondArray::from(vec![5]);
+        let us_from_ms = TimestampMicrosecondArray::from(vec![1_234_000]);
+        let us_from_s = TimestampMicrosecondArray::from(vec![5_000_000]);
+        assert_eq!(
+            hash_array(&ms, 42).unwrap().value(0),
+            hash_array(&us_from_ms, 42).unwrap().value(0)
+        );
+        assert_eq!(
+            hash_array(&s, 42).unwrap().value(0),
+            hash_array(&us_from_s, 42).unwrap().value(0)
+        );
+    }
+
+    #[test]
+    fn negative_nanosecond_timestamp_floors_not_truncates() {
+        // -1500ns is -2us floored (Spark's Math.floorDiv convention), not
+        // -1us truncated-toward-zero -- these differ for pre-1970 values.
+        let ns = TimestampNanosecondArray::from(vec![-1500]);
+        let expected_us = TimestampMicrosecondArray::from(vec![-2]);
+        assert_eq!(
+            hash_array(&ns, 42).unwrap().value(0),
+            hash_array(&expected_us, 42).unwrap().value(0)
+        );
     }
 
     #[test]
