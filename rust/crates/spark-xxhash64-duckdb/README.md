@@ -53,6 +53,24 @@ somehow feeding it invalid data. Contrast with the Postgres extension,
 which panics (caught into a normal SQL `ERROR`, not a crash) instead of
 silently returning a wrong-but-plausible hash -- see that crate's README.
 
+## Installing a pre-built binary
+
+No need to build locally -- every push to `main` publishes binaries for all
+supported platforms to a self-hosted [custom extension
+repository](https://duckdb.org/docs/stable/extensions/extension_distribution)
+on GitHub Pages (`../../../.github/workflows/duckdb-extension.yml`):
+
+```sql
+SET allow_unsigned_extensions = true;
+SET custom_extension_repository = 'https://bmsuisse.github.io/pyspark-xxhash64';
+INSTALL spark_xxhash64;
+LOAD spark_xxhash64;
+```
+
+`allow_unsigned_extensions` is required because this repository is unsigned
+(no RSA-2048 signature -- the signing key is DuckDB's own, not available to
+third-party extension authors).
+
 ## Building and loading
 
 ```bash

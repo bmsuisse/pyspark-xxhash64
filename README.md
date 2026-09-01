@@ -26,6 +26,12 @@ run over your bytes. It's two layers:
 ## Install
 
 ```bash
+pip install pyspark-xxhash64
+```
+
+Or, for local development:
+
+```bash
 pip install -e .
 ```
 
@@ -142,6 +148,18 @@ SELECT spark_xxhash64('hello'); -- -4367754540140381902
 
 See `rust/crates/spark-xxhash64-duckdb/README.md` for build steps and
 scope (currently VARCHAR only).
+
+Pre-built binaries are published to a self-hosted [DuckDB custom extension
+repository](https://duckdb.org/docs/stable/extensions/extension_distribution)
+on every push to `main` (linux/macOS/windows, amd64+arm64 where available --
+see `.github/workflows/duckdb-extension.yml`), so no local build is required:
+
+```sql
+SET allow_unsigned_extensions = true; -- unsigned, self-hosted build
+SET custom_extension_repository = 'https://bmsuisse.github.io/pyspark-xxhash64';
+INSTALL spark_xxhash64;
+LOAD spark_xxhash64;
+```
 
 ## Fast path: Postgres extension
 
