@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/spark-xxhash64-core", "crates/spark-xxhash64-pyarrow"]
+members = [
+    "crates/spark-xxhash64-core",
+    "crates/spark-xxhash64-pyarrow",
+    "crates/spark-xxhash64-duckdb",
+]
 
 [workspace.package]
 version = "0.1.0"

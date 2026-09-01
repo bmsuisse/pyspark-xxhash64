@@ -55,6 +55,51 @@ fn double_bits(v: f64) -> u64 {
     }
 }
 
+/// Single-value Spark-compatible hashing, reused by both `hash_array`
+/// (below, for whole Arrow arrays) and the DuckDB extension crate (which
+/// has no Arrow array to work with -- DuckDB hands it one value per row).
+/// Chain calls to hash multiple columns, exactly like Spark: each column's
+/// hash becomes the seed for the next (`pyspark_xxhash64.hasher` does the
+/// same thing in Python; see that module's `compute_hash`).
+pub mod scalar {
+    use super::{double_bits, float_bits, hash_bytes as hash_bytes_u64, hash_i32 as hash_i32_u64, hash_i64 as hash_i64_u64};
+
+    #[inline]
+    pub fn hash_bool(v: bool, seed: i64) -> i64 {
+        hash_i32_u64(if v { 1 } else { 0 }, seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_i32(v: i32, seed: i64) -> i64 {
+        hash_i32_u64(v, seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_i64(v: i64, seed: i64) -> i64 {
+        hash_i64_u64(v, seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_f32(v: f32, seed: i64) -> i64 {
+        hash_i32_u64(float_bits(v) as i32, seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_f64(v: f64, seed: i64) -> i64 {
+        hash_i64_u64(double_bits(v) as i64, seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_str(v: &str, seed: i64) -> i64 {
+        hash_bytes_u64(v.as_bytes(), seed as u64) as i64
+    }
+
+    #[inline]
+    pub fn hash_bytes(v: &[u8], seed: i64) -> i64 {
+        hash_bytes_u64(v, seed as u64) as i64
+    }
+}
+
 /// Minimal two's-complement big-endian bytes, matching Java's
 /// `BigInteger.toByteArray()` (used by Spark for `Decimal` values whose
 /// precision does not fit in a `long`, i.e. precision > 18).

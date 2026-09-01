@@ -122,6 +122,20 @@ Requires building the `spark-xxhash64-pyarrow` extension with maturin (see
 `rust/README.md`); it's an optional extra, not a dependency of the base
 package.
 
+## Fast path: DuckDB extension
+
+`rust/crates/spark-xxhash64-duckdb` is a DuckDB loadable extension exposing
+`spark_xxhash64(VARCHAR) -> BIGINT` in SQL, built against DuckDB's new
+stable C Extension API (not the older C++ extension template):
+
+```sql
+LOAD 'spark_xxhash64.duckdb_extension';
+SELECT spark_xxhash64('hello'); -- -4367754540140381902
+```
+
+See `rust/crates/spark-xxhash64-duckdb/README.md` for build steps and
+scope (currently VARCHAR only).
+
 ## Postgres
 
 A Postgres-native implementation (SQL/PLpgSQL function, or C extension for

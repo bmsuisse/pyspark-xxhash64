@@ -1,0 +1,14 @@
+[package]
+name = "spark-xxhash64-duckdb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "spark_xxhash64_duckdb"
+crate-type = ["cdylib"]
+
+[dependencies]
+spark-xxhash64-core = { path = "../spark-xxhash64-core" }
+quack-rs = "0.13"
+libduckdb-sys = { version = ">=1.4.4, <2", features = ["loadable-extension"] }

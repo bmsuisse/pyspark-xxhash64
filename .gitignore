@@ -6,4 +6,5 @@ __pycache__/
 dist/
 build/
 rust/target/
+*.duckdb_extension
 

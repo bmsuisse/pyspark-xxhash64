@@ -17,6 +17,12 @@ scale. This is a Cargo workspace with two crates:
   extension module, converting to/from pyarrow zero-copy via `arrow-rs`'s
   `pyarrow` feature (the Arrow C Data Interface -- no serialization, no data
   copy for the input array).
+- **`spark-xxhash64-duckdb`** -- a DuckDB loadable extension exposing
+  `spark_xxhash64(VARCHAR) -> BIGINT` in SQL, built against DuckDB's new
+  stable C Extension API via [`quack-rs`](https://crates.io/crates/quack-rs)
+  (no C++, not the older extension template). Reuses the same
+  `spark-xxhash64-core::scalar` functions. See its own README for scope,
+  build steps, and a real NULL-handling gotcha it surfaced.
 
 ## Why this exists
 
