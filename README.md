@@ -64,8 +64,7 @@ name, not `isinstance`, so no hard dependency on `pyspark` is needed.
 
 ## Verification
 
-There's no JVM/pyspark in the sandbox this was built in, so correctness was
-established two ways instead of "run it next to a real Spark cluster":
+Correctness was established three ways, each covering a different layer:
 
 1. **The XXH64 core** (`core.py`) was checked against the actual C reference
    implementation from [Cyan4973/xxHash](https://github.com/Cyan4973/xxHash)
@@ -79,22 +78,31 @@ established two ways instead of "run it next to a real Spark cluster":
    4 string vectors (seed 42, e.g. `xxhash64("AAA") == 3965631622972380050`)
    and the `SPARK-35113` day-time/year-month interval vectors (seed 10).
    See `tests/test_hasher.py`.
+3. **A real local Spark session.** A portable JDK 17 + `pyspark` were
+   installed and every type was compared directly against
+   `df.select(F.xxhash64("col"))` on Spark 4.2.0: float/double including NaN
+   and `-0.0`, byte/short/int/long/bool, string (incl. non-ASCII), binary,
+   date, timestamp, decimal (both the precision<=18 long-encoding and the
+   precision>18 `BigInteger`-byte-array encoding, including the exact
+   boundary at precision 18 vs 19), array (incl. null elements and empty
+   arrays), map, struct, nested array-of-struct, multi-column hashing, and
+   top-level null. All matched exactly. See `tests/test_spark_crosscheck.py`
+   (skipped by default -- needs a JVM + `pyspark` to run).
 
-Together these pin down: the hashing primitive itself, integer/long
-fast-path encoding (via the interval vectors, which resolve to plain
-`LongType`/`IntegerType` hashing), UTF-8 string hashing, and the multi-value
-seed-chaining behavior. Types without an independent Spark test vector
-available here (float/double NaN and `-0.0` canonicalization, decimal,
-array/map/struct chaining) are implemented by directly porting Catalyst's
-Scala/Java source and covered by self-consistency tests, but have **not**
-been cross-checked against a real Spark run -- do that before relying on
-them for anything precision-critical, e.g.:
+Two non-obvious things that verification run surfaced, both now documented
+in the test file:
 
-```python
-# in a real PySpark session
-from pyspark.sql import functions as F
-df.select(F.xxhash64(F.col("x")).alias("h")).show()
-```
+- **Maps**: modern Spark (`spark.sql.legacy.allowHashOnMapType`) refuses to
+  hash `MapType` columns by default with an analysis error -- it's not that
+  the hash is undefined, Spark just won't compute it unless you opt back
+  into the legacy behavior. This library will hash a Python dict as a map
+  regardless; make sure that's actually what you want.
+- **Type inference matters, exactly.** `spark.createDataFrame([("Alice", 30)], [...])`
+  without an explicit schema infers a bare Python int as `LongType`, not
+  `IntegerType`. Since `IntegerType` and `LongType` hash via different byte
+  lengths (4 vs 8 bytes), picking the wrong one silently produces a
+  different, still-plausible-looking hash. Always match the *actual* Spark
+  column type, not the Python value's type.
 
 ## Postgres
 
