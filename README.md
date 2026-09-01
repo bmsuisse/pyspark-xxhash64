@@ -136,11 +136,22 @@ SELECT spark_xxhash64('hello'); -- -4367754540140381902
 See `rust/crates/spark-xxhash64-duckdb/README.md` for build steps and
 scope (currently VARCHAR only).
 
-## Postgres
+## Fast path: Postgres extension
 
-A Postgres-native implementation (SQL/PLpgSQL function, or C extension for
-speed) is planned as a follow-up in `postgres/`, once the Python
-implementation above has been validated against a real Spark cluster.
+`rust/crates/spark-xxhash64-postgres` is a Postgres extension (built with
+[pgrx](https://github.com/pgcentralfoundation/pgrx)) exposing
+`spark_xxhash64(text) -> bigint`:
+
+```sql
+CREATE EXTENSION spark_xxhash64_postgres;
+SELECT spark_xxhash64('hello'); -- -4367754540140381902
+```
+
+See `rust/crates/spark-xxhash64-postgres/README.md` for build/install
+steps -- including how this was done against a real Postgres cluster
+without OS root access (extracting build dependencies from `.deb`s and
+loading the extension via Postgres 18's `extension_control_path`/
+`dynamic_library_path` GUCs).
 
 ## Running tests
 

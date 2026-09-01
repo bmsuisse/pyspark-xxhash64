@@ -23,6 +23,16 @@ scale. This is a Cargo workspace with two crates:
   (no C++, not the older extension template). Reuses the same
   `spark-xxhash64-core::scalar` functions. See its own README for scope,
   build steps, and a real NULL-handling gotcha it surfaced.
+- **`spark-xxhash64-postgres`** -- a Postgres extension exposing
+  `spark_xxhash64(text) -> bigint`, built with
+  [pgrx](https://github.com/pgcentralfoundation/pgrx). Also reuses
+  `spark-xxhash64-core::scalar`, and hits the same NULL-handling gotcha as
+  the DuckDB extension. See its own README -- it also documents how this
+  was built and installed against a real Postgres cluster *without* root
+  (extracting build deps from `.deb`s with `dpkg -x`, and loading the
+  extension via Postgres 18's `extension_control_path`/
+  `dynamic_library_path` GUCs instead of the root-owned system
+  directories).
 
 ## Why this exists
 

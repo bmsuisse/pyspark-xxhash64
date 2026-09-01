@@ -4,6 +4,7 @@ members = [
     "crates/spark-xxhash64-core",
     "crates/spark-xxhash64-pyarrow",
     "crates/spark-xxhash64-duckdb",
+    "crates/spark-xxhash64-postgres",
 ]
 
 [workspace.package]
