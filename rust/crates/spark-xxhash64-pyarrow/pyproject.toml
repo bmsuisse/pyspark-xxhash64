@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "spark-xxhash64-pyarrow"
+version = "0.1.0"
+description = "Fast, native Spark-compatible xxhash64() for pyarrow arrays (Rust)"
+requires-python = ">=3.9"
+
+[tool.maturin]
+module-name = "spark_xxhash64_pyarrow"

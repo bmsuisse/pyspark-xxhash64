@@ -1,0 +1,9 @@
+[package]
+name = "spark-xxhash64-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arrow = { version = "56", default-features = false }
+xxhash-rust = { version = "0.8", features = ["xxh64"] }

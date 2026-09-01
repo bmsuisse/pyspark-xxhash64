@@ -1,0 +1,121 @@
+"""Tests for the native Rust pyarrow fast path (pyspark_xxhash64.arrow).
+
+Skipped entirely if either `pyarrow` or the compiled `spark_xxhash64_pyarrow`
+extension isn't installed -- build the latter with:
+
+    cd rust/crates/spark-xxhash64-pyarrow && maturin develop --release
+
+Correctness is checked against pyspark_xxhash64.hasher.xxhash64 (the pure
+Python implementation, itself verified against a real Spark session -- see
+tests/test_spark_crosscheck.py and the README), so a match here transitively
+means a match against real Spark too.
+"""
+from decimal import Decimal
+
+import pytest
+
+pa = pytest.importorskip("pyarrow")
+pytest.importorskip("spark_xxhash64_pyarrow")
+
+from pyspark_xxhash64 import arrow as fast  # noqa: E402
+from pyspark_xxhash64 import types as T  # noqa: E402
+from pyspark_xxhash64.hasher import xxhash64  # noqa: E402
+
+
+def ref(values, dtype, seed=42):
+    return [seed if v is None else xxhash64((v, dtype), seed=seed) for v in values]
+
+
+def test_strings_match_reference_and_spark_suite_vectors():
+    values = ["AAA", "AAA  ", "aaa", "aaa   ", None, "hello"]
+    out = fast.xxhash64_array(pa.array(values)).to_pylist()
+    assert out == ref(values, T.StringType())
+    assert out[:4] == [3965631622972380050, 196039582279068044, 2465751751477118478, -2249763606958050730]
+
+
+def test_large_string_and_binary():
+    values = ["a", "bb", None, "ccc"]
+    out = fast.xxhash64_array(pa.array(values, type=pa.large_string())).to_pylist()
+    assert out == ref(values, T.StringType())
+
+    bvalues = [b"\x00\x01", None, b"\xff" * 40]
+    out_bin = fast.xxhash64_array(pa.array(bvalues, type=pa.binary())).to_pylist()
+    assert out_bin == ref(bvalues, T.BinaryType())
+
+    out_lbin = fast.xxhash64_array(pa.array(bvalues, type=pa.large_binary())).to_pylist()
+    assert out_lbin == ref(bvalues, T.BinaryType())
+
+
+def test_all_integer_widths_and_bool():
+    i8 = [1, -1, 0, 127, -128, None]
+    assert fast.xxhash64_array(pa.array(i8, type=pa.int8())).to_pylist() == ref(i8, T.ByteType())
+
+    i16 = [1, -1, 0, 32767, -32768, None]
+    assert fast.xxhash64_array(pa.array(i16, type=pa.int16())).to_pylist() == ref(i16, T.ShortType())
+
+    i32 = [1, -1, 0, 2147483647, -2147483648, None]
+    assert fast.xxhash64_array(pa.array(i32, type=pa.int32())).to_pylist() == ref(i32, T.IntegerType())
+
+    i64 = [1, -1, 0, 2**62, -(2**62), None]
+    assert fast.xxhash64_array(pa.array(i64, type=pa.int64())).to_pylist() == ref(i64, T.LongType())
+
+    b = [True, False, None]
+    assert fast.xxhash64_array(pa.array(b)).to_pylist() == ref(b, T.BooleanType())
+
+
+def test_float_and_double_special_values():
+    f32 = [1.5, -0.0, 0.0, float("nan"), -float("nan"), None]
+    assert fast.xxhash64_array(pa.array(f32, type=pa.float32())).to_pylist() == ref(f32, T.FloatType())
+
+    f64 = [1.5, -0.0, 0.0, float("nan"), None]
+    assert fast.xxhash64_array(pa.array(f64, type=pa.float64())).to_pylist() == ref(f64, T.DoubleType())
+
+
+def test_date32():
+    import datetime
+
+    dates = [datetime.date(1970, 1, 1), datetime.date(2023, 6, 15), None]
+    days = [None if d is None else (d - datetime.date(1970, 1, 1)).days for d in dates]
+    out = fast.xxhash64_array(pa.array(dates, type=pa.date32())).to_pylist()
+    assert out == ref(days, T.DateType())
+
+
+def test_timestamp_microsecond_and_nanosecond_truncation():
+    import datetime
+
+    ts = [datetime.datetime(2023, 6, 15, 12, 30, 45, 123456), None]
+    micros = [None if t is None else int((t - datetime.datetime(1970, 1, 1)).total_seconds() * 1_000_000) for t in ts]
+    out_us = fast.xxhash64_array(pa.array(ts, type=pa.timestamp("us"))).to_pylist()
+    assert out_us == ref(micros, T.TimestampType())
+
+    out_ns = fast.xxhash64_array(pa.array(ts, type=pa.timestamp("ns"))).to_pylist()
+    assert out_ns == out_us  # nanosecond input truncates to microseconds, same as Spark's TimestampType
+
+
+def test_decimal_precision_boundary():
+    small = [Decimal("12345.67"), Decimal("-999.99"), None]
+    out = fast.xxhash64_array(pa.array(small, type=pa.decimal128(10, 2))).to_pylist()
+    assert out == ref(small, T.DecimalType(10, 2))
+
+    big = [Decimal("123456789012345.67890"), None]
+    out_big = fast.xxhash64_array(pa.array(big, type=pa.decimal128(30, 5))).to_pylist()
+    assert out_big == ref(big, T.DecimalType(30, 5))
+
+
+def test_chunked_array_reassembles_correctly():
+    values = ["a", "b", "c", "d", "e"]
+    chunked = pa.chunked_array([pa.array(values[:2]), pa.array(values[2:])])
+    out = fast.xxhash64_array(chunked)
+    assert isinstance(out, pa.ChunkedArray)
+    assert out.to_pylist() == ref(values, T.StringType())
+
+
+def test_empty_array():
+    out = fast.xxhash64_array(pa.array([], type=pa.utf8()))
+    assert out.to_pylist() == []
+
+
+def test_all_null_array():
+    values = [None, None, None]
+    out = fast.xxhash64_array(pa.array(values, type=pa.utf8())).to_pylist()
+    assert out == [42, 42, 42]

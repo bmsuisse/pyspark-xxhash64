@@ -104,6 +104,24 @@ in the test file:
   different, still-plausible-looking hash. Always match the *actual* Spark
   column type, not the Python value's type.
 
+## Fast path: pyarrow, native Rust
+
+The pure-Python `xxhash64()` above processes one value at a time -- fine for
+small data, a bottleneck at scale. For a whole pyarrow column hashed
+natively (no per-row Python overhead, ~175x faster on strings), see
+[`rust/`](rust/):
+
+```python
+import pyarrow as pa
+from pyspark_xxhash64 import arrow as fast
+
+fast.xxhash64_array(pa.array(["hello", "world"]))
+```
+
+Requires building the `spark-xxhash64-pyarrow` extension with maturin (see
+`rust/README.md`); it's an optional extra, not a dependency of the base
+package.
+
 ## Postgres
 
 A Postgres-native implementation (SQL/PLpgSQL function, or C extension for
