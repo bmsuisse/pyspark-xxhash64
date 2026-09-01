@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report whether a release would happen without publishing/tagging anything"
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  plan:
+    name: Detect version bump
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        name: "Check pyspark-xxhash64"
+        run: |
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "pyspark-xxhash64: release=${{ steps.check.outputs.release }} version=${{ steps.check.outputs.version }}"
+
+  publish:
+    name: "Publish pyspark-xxhash64 to PyPI"
+    needs: [test, plan]
+    if: needs.plan.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyspark-xxhash64
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Publish to PyPI (OIDC trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Tag release
+        run: |
+          git tag "v${{ needs.plan.outputs.version }}"
+          git push origin "v${{ needs.plan.outputs.version }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.plan.outputs.version }}"
+          TAG="v$VERSION"
+          PREV_TAG=$(git tag -l 'v*' --sort=-creatordate | grep -vxF "$TAG" | head -n1)
+          {
+            echo "## pyspark-xxhash64 v$VERSION"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              echo "Changes since $PREV_TAG:"
+              echo
+              git log "$PREV_TAG..HEAD" --pretty=format:'- %s (%h)'
+            else
+              echo "Initial release."
+            fi
+          } > release-notes.md
+          gh release create "$TAG" --title "pyspark-xxhash64 v$VERSION" --notes-file release-notes.md

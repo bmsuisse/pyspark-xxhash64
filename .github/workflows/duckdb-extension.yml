@@ -1,0 +1,179 @@
+name: Publish DuckDB extension repository
+
+# Builds rust/crates/spark-xxhash64-duckdb for every supported platform and
+# publishes them as a self-hosted DuckDB "custom extension repository" on
+# GitHub Pages, so users can do:
+#
+#   SET custom_extension_repository = 'https://bmsuisse.github.io/pyspark-xxhash64';
+#   INSTALL spark_xxhash64;
+#   LOAD spark_xxhash64;
+#
+# DuckDB's installer requests <repo>/<duckdb_version>/<platform>/<name>.duckdb_extension.gz
+# where <duckdb_version> is the *exact* version tag of the running DuckDB build
+# (see "Extension distribution" in DuckDB's docs) -- not the minimum C API
+# version this extension declares in its own metadata footer. Since the
+# extension is built against DuckDB's stable C API (C_STRUCT ABI, forward
+# compatible across DuckDB releases that share that API), the same binary is
+# safe to publish under every DuckDB release tag we want to support -- so this
+# workflow just copies each platform's build into every directory listed in
+# DUCKDB_REPO_VERSIONS below. Add new DuckDB releases to that list as they
+# come out; nothing else needs to change.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/crates/spark-xxhash64-duckdb/**"
+      - "rust/crates/spark-xxhash64-core/**"
+      - "rust/Cargo.lock"
+      - ".github/workflows/duckdb-extension.yml"
+  workflow_dispatch: {}
+
+env:
+  # Minimum DuckDB C Extension API version this build targets (stamped into
+  # the extension's own metadata footer, not a repository path).
+  DUCKDB_C_API_VERSION: v1.2.0
+  # DuckDB release tags this repository serves the extension under -- extend
+  # as new DuckDB versions ship. Space-separated.
+  DUCKDB_REPO_VERSIONS: >-
+    v1.4.4 v1.4.5 v1.4.6
+    v1.5.0 v1.5.1 v1.5.2 v1.5.3 v1.5.4 v1.5.5
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: "Build (${{ matrix.platform }})"
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_amd64
+            os: ubuntu-latest
+            lib_name: libspark_xxhash64_duckdb.so
+          - platform: linux_arm64
+            os: ubuntu-24.04-arm
+            lib_name: libspark_xxhash64_duckdb.so
+          - platform: osx_amd64
+            os: macos-13
+            lib_name: libspark_xxhash64_duckdb.dylib
+          - platform: osx_arm64
+            os: macos-14
+            lib_name: libspark_xxhash64_duckdb.dylib
+          - platform: windows_amd64
+            os: windows-latest
+            lib_name: spark_xxhash64_duckdb.dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ${{ matrix.platform }}
+
+      - name: Build extension
+        working-directory: rust
+        run: cargo build -p spark-xxhash64-duckdb --release
+
+      - name: Install append_metadata (quack-rs)
+        run: cargo install quack-rs --locked --bin append_metadata
+
+      - name: Read extension version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep -m1 '^version = ' rust/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "version=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Append metadata footer + compress
+        shell: bash
+        run: |
+          set -euo pipefail
+          append_metadata \
+            "rust/target/release/${{ matrix.lib_name }}" \
+            spark_xxhash64.duckdb_extension \
+            --abi-type C_STRUCT \
+            --extension-version "${{ steps.version.outputs.version }}" \
+            --duckdb-version "${{ env.DUCKDB_C_API_VERSION }}" \
+            --platform "${{ matrix.platform }}"
+          gzip -9 -c spark_xxhash64.duckdb_extension > spark_xxhash64.duckdb_extension.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: duckdb-ext-${{ matrix.platform }}
+          path: spark_xxhash64.duckdb_extension.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish extension repository to GitHub Pages
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: duckdb-ext-*
+          path: downloaded
+          merge-multiple: false
+
+      - name: Assemble repository layout
+        run: |
+          set -euo pipefail
+          if [ -z "$(find downloaded -name '*.duckdb_extension.gz' -print -quit 2>/dev/null)" ]; then
+            echo "::error::No platform build succeeded -- refusing to publish an empty extension repository (would wipe out the existing one)."
+            exit 1
+          fi
+
+          mkdir -p site
+          for artifact_dir in downloaded/duckdb-ext-*; do
+            platform=$(basename "$artifact_dir" | sed 's/^duckdb-ext-//')
+            for duckdb_version in $DUCKDB_REPO_VERSIONS; do
+              dest="site/$duckdb_version/$platform"
+              mkdir -p "$dest"
+              cp "$artifact_dir/spark_xxhash64.duckdb_extension.gz" "$dest/"
+            done
+          done
+
+          echo "Published platforms:"
+          find downloaded -name '*.duckdb_extension.gz' -printf '  %h\n' | sed 's#downloaded/duckdb-ext-##'
+
+          cat > site/index.html <<HTML
+          <!doctype html>
+          <title>spark_xxhash64 DuckDB extension repository</title>
+          <h1>spark_xxhash64 DuckDB extension repository</h1>
+          <p>Self-hosted <a href="https://duckdb.org/docs/stable/extensions/extension_distribution">custom extension repository</a> for
+          <code>spark_xxhash64(VARCHAR) -&gt; BIGINT</code>, bit-for-bit compatible with
+          <code>pyspark.sql.functions.xxhash64(string_col)</code>.
+          See <a href="https://github.com/bmsuisse/pyspark-xxhash64">bmsuisse/pyspark-xxhash64</a>.</p>
+          <pre>
+          SET allow_unsigned_extensions = true; -- unsigned, self-hosted build
+          SET custom_extension_repository = 'https://bmsuisse.github.io/pyspark-xxhash64';
+          INSTALL spark_xxhash64;
+          LOAD spark_xxhash64;
+          SELECT spark_xxhash64('hello'); -- -4367754540140381902
+          </pre>
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
