@@ -2162,20 +2162,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "spark_xxhash64_arrow"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "pyo3",
+ "spark-xxhash64-core",
+]
+
+[[package]]
 name = "spark_xxhash64_postgres"
 version = "0.1.0"
 dependencies = [
  "pgrx",
  "pgrx-tests",
- "spark-xxhash64-core",
-]
-
-[[package]]
-name = "spark_xxhash64_pyarrow"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "pyo3",
  "spark-xxhash64-core",
 ]
 

@@ -1,9 +1,9 @@
 """Tests for the native Rust Arrow fast path (pyspark_xxhash64.arrow).
 
-Skipped entirely if either `pyarrow` or the compiled `spark_xxhash64_pyarrow`
+Skipped entirely if either `pyarrow` or the compiled `spark_xxhash64_arrow`
 extension isn't installed -- build the latter with:
 
-    cd rust/crates/spark-xxhash64-pyarrow && maturin develop --release
+    cd rust/crates/spark-xxhash64-arrow && maturin develop --release
 
 pyarrow is used here only as a convenient way to build test input and read
 the result back (via `pa.array(result)`) -- the extension itself does not
@@ -21,7 +21,7 @@ from decimal import Decimal
 import pytest
 
 pa = pytest.importorskip("pyarrow")
-pytest.importorskip("spark_xxhash64_pyarrow")
+pytest.importorskip("spark_xxhash64_arrow")
 
 from pyspark_xxhash64 import arrow as fast  # noqa: E402
 from pyspark_xxhash64 import types as T  # noqa: E402

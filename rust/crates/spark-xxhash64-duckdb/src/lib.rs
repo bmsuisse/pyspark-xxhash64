@@ -8,12 +8,12 @@
 //! C++ extension template, per the project's requirement.
 //!
 //! The actual per-type encoding logic lives in `spark-xxhash64-core`
-//! (`scalar::hash_str`), shared with the pyarrow extension crate, so there
+//! (`scalar::hash_str`), shared with the arrow extension crate, so there
 //! is exactly one Rust implementation of "how does Spark turn a value into
 //! bytes before hashing", not one per host.
 //!
 //! Only VARCHAR is wired up so far (quack-rs 0.13's published API does not
-//! yet have the typed `map1_str`-style closures used for the pyarrow crate
+//! yet have the typed `map1_str`-style closures used for the arrow crate
 //! -- those are `main`-branch-only -- so this uses the raw scalar-function
 //! builder directly). Extending to other types (BIGINT, INTEGER, DOUBLE,
 //! BLOB, ...) means adding more raw callbacks under DuckDB function-set

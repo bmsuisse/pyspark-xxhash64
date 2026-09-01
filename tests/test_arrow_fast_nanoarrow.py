@@ -1,18 +1,18 @@
 """Proves the Rust fast path (pyspark_xxhash64.arrow) works without pyarrow
 installed at all -- both directions go through the standardized Arrow
 PyCapsule Interface (__arrow_c_array__), not a pyarrow-specific API. See
-rust/crates/spark-xxhash64-pyarrow/src/lib.rs for how the output achieves
+rust/crates/spark-xxhash64-arrow/src/lib.rs for how the output achieves
 this (arrow-rs's own ToPyArrow hard-imports pyarrow; this crate implements
 the export protocol itself instead, to avoid that).
 
-Skipped unless `nanoarrow` and the compiled `spark_xxhash64_pyarrow`
+Skipped unless `nanoarrow` and the compiled `spark_xxhash64_arrow`
 extension are installed. Deliberately does NOT skip if pyarrow is missing --
 that's the point of this file.
 """
 import pytest
 
 na = pytest.importorskip("nanoarrow")
-pytest.importorskip("spark_xxhash64_pyarrow")
+pytest.importorskip("spark_xxhash64_arrow")
 
 from pyspark_xxhash64 import arrow as fast  # noqa: E402
 
@@ -36,7 +36,7 @@ def test_1_native_extension_never_imports_pyarrow():
         #   pytest tests/test_arrow_fast_nanoarrow.py
         pytest.skip("pyarrow already imported by another test in this run")
 
-    import spark_xxhash64_pyarrow as native
+    import spark_xxhash64_arrow as native
 
     arr = na.Array(["hello"], schema=na.string())
     result = native.xxhash64(arr, 42)

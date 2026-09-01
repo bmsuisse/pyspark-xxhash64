@@ -12,14 +12,14 @@ CMake/C++ template with hand-written glue code; the new C API plus
 `quack-rs` avoids that entirely.
 
 Reuses `spark-xxhash64-core::scalar` for the actual hashing -- the same
-per-type encoding used by the pyarrow extension -- so the Spark
+per-type encoding used by the arrow extension -- so the Spark
 compatibility logic exists in exactly one place.
 
 ## Scope
 
 Only `spark_xxhash64(VARCHAR) -> BIGINT` is wired up. The published
 `quack-rs` version (0.13.0) doesn't yet have the typed `map1_str`-style
-closures used in the pyarrow crate (those are `main`-branch-only as of this
+closures used in the arrow crate (those are `main`-branch-only as of this
 writing), so this uses the raw `ScalarFunctionBuilder` + an
 `unsafe extern "C"` callback directly -- see `src/lib.rs`, it's about 40
 lines.

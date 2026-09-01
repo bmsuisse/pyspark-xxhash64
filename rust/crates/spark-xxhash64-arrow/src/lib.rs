@@ -8,9 +8,11 @@
 //! which does have its own `#[test]`s, and this crate is just a thin
 //! Arrow-C-Data-Interface conversion wrapper around it.
 //!
-//! Deliberately does not require `pyarrow` to be installed, on either side:
-//! the input accepts anything implementing the standardized [Arrow
-//! PyCapsule Interface](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
+//! Arrow-implementation-agnostic, not pyarrow-specific, despite the
+//! `arrow-rs` crate feature this depends on being named "pyarrow" upstream
+//! (see `Cargo.toml`). Neither direction requires `pyarrow` to be
+//! installed: the input accepts anything implementing the standardized
+//! [Arrow PyCapsule Interface](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
 //! (`__arrow_c_array__`) -- `arrow-rs`'s `FromPyArrow` already checks for
 //! that before falling back to a pyarrow-specific import, so a `nanoarrow`,
 //! `polars`, or `pandas` (arrow-backed) array all work here already. The
@@ -62,7 +64,7 @@ impl ArrowArrayExport {
         if let Some(requested) = &requested_schema {
             let capsule = requested.downcast::<PyCapsule>().map_err(|_| {
                 PyValueError::new_err(
-                    "spark_xxhash64_pyarrow: requested_schema must be an 'arrow_schema' PyCapsule",
+                    "spark_xxhash64_arrow: requested_schema must be an 'arrow_schema' PyCapsule",
                 )
             })?;
             // SAFETY: caller-provided per the Arrow PyCapsule Interface
@@ -70,12 +72,12 @@ impl ArrowArrayExport {
             let schema_ptr = unsafe { capsule.reference::<FFI_ArrowSchema>() };
             let requested_type = DataType::try_from(schema_ptr).map_err(|e| {
                 PyValueError::new_err(format!(
-                    "spark_xxhash64_pyarrow: invalid requested_schema: {e}"
+                    "spark_xxhash64_arrow: invalid requested_schema: {e}"
                 ))
             })?;
             if requested_type != DataType::Int64 {
                 return Err(PyValueError::new_err(format!(
-                    "spark_xxhash64_pyarrow: cannot satisfy requested_schema {requested_type:?} \
+                    "spark_xxhash64_arrow: cannot satisfy requested_schema {requested_type:?} \
                      (this function always returns int64)"
                 )));
             }
@@ -121,7 +123,7 @@ fn xxhash64(array: &Bound<'_, PyAny>, seed: i64) -> PyResult<ArrowArrayExport> {
 }
 
 #[pymodule]
-fn spark_xxhash64_pyarrow(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn spark_xxhash64_arrow(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ArrowArrayExport>()?;
     m.add_function(wrap_pyfunction!(xxhash64, m)?)?;
     Ok(())

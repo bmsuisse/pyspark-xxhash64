@@ -1,14 +1,17 @@
 [package]
-name = "spark_xxhash64_pyarrow"
+name = "spark_xxhash64_arrow"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "spark_xxhash64_pyarrow"
+name = "spark_xxhash64_arrow"
 crate-type = ["cdylib"]
 
 [dependencies]
 spark-xxhash64-core = { path = "../spark-xxhash64-core" }
+# arrow-rs's own feature flag is named "pyarrow" upstream (it's the Arrow
+# C Data Interface / PyCapsule Python-interop feature) -- unrelated to this
+# crate's own name, which is Arrow-implementation-agnostic; see lib.rs.
 arrow = { version = "56", default-features = false, features = ["pyarrow"] }
 pyo3 = { version = "=0.25.1", features = ["extension-module", "abi3-py39"] }

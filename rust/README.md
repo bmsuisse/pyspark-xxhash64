@@ -12,7 +12,7 @@ scale. This is a Cargo workspace with four crates:
   reimplement a well-tested generic hash function, only the Spark-specific
   layer on top). No Python dependency -- reusable from a future DuckDB
   extension or anywhere else that hands you an Arrow array.
-- **`spark-xxhash64-pyarrow`** -- a thin [PyO3](https://pyo3.rs) +
+- **`spark-xxhash64-arrow`** -- a thin [PyO3](https://pyo3.rs) +
   [maturin](https://www.maturin.rs) wrapper exposing that as a Python
   extension module, converting to/from Arrow zero-copy via the [Arrow
   PyCapsule Interface](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
@@ -69,7 +69,7 @@ now. Contributions welcome -- the recursive logic already exists in
 ## Building
 
 ```bash
-# from rust/crates/spark-xxhash64-pyarrow, into whatever venv is active
+# from rust/crates/spark-xxhash64-arrow, into whatever venv is active
 maturin develop --release
 ```
 
@@ -84,11 +84,11 @@ na.Array(result).to_pylist()
 
 ## No pyarrow dependency
 
-Despite the crate/module names (kept for historical reasons -- this started
-as a pyarrow-specific wrapper), neither `spark-xxhash64-pyarrow` nor
-`pyspark_xxhash64.arrow` requires `pyarrow` to be installed. Both directions
-go through the standardized Arrow PyCapsule Interface
-(`__arrow_c_array__`):
+Neither `spark-xxhash64-arrow` nor `pyspark_xxhash64.arrow` requires
+`pyarrow` to be installed, despite `pyspark_xxhash64.arrow`'s module name
+(kept as-is since it's the Python-facing "Arrow support" module, not
+specifically about pyarrow). Both directions go through the standardized
+Arrow PyCapsule Interface (`__arrow_c_array__`):
 
 - **Input**: `arrow-rs`'s `FromPyArrow` already checks for
   `__arrow_c_array__` before falling back to a pyarrow-specific import, so
@@ -97,7 +97,7 @@ go through the standardized Arrow PyCapsule Interface
 - **Output** needed an actual fix: `arrow-rs`'s built-in `ToPyArrow` for
   `ArrayData` unconditionally does `py.import("pyarrow")` to construct the
   result as a literal `pyarrow.Array`, which would force a `pyarrow`
-  import even for an all-`nanoarrow` caller. `spark-xxhash64-pyarrow`
+  import even for an all-`nanoarrow` caller. `spark-xxhash64-arrow`
   doesn't use that -- it implements the export side of the PyCapsule
   protocol itself (`ArrowArrayExport` in `src/lib.rs`, including handling
   `requested_schema` so e.g. `pa.chunked_array(chunks, type=pa.int64())`

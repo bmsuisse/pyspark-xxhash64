@@ -125,7 +125,7 @@ na.Array(result).to_pylist()
 `fast.xxhash64_array` doesn't care which Arrow implementation produced its
 input, and its return value works with any of them too.)
 
-Requires building the `spark-xxhash64-pyarrow` extension with maturin (see
+Requires building the `spark-xxhash64-arrow` extension with maturin (see
 `rust/README.md`); it's an optional extra, not a dependency of the base
 package.
 
