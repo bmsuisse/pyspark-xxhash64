@@ -14,9 +14,10 @@ scale. This is a Cargo workspace with four crates:
   extension or anywhere else that hands you an Arrow array.
 - **`spark-xxhash64-pyarrow`** -- a thin [PyO3](https://pyo3.rs) +
   [maturin](https://www.maturin.rs) wrapper exposing that as a Python
-  extension module, converting to/from pyarrow zero-copy via `arrow-rs`'s
-  `pyarrow` feature (the Arrow C Data Interface -- no serialization, no data
-  copy for the input array).
+  extension module, converting to/from Arrow zero-copy via the [Arrow
+  PyCapsule Interface](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
+  (the standardized `__arrow_c_array__` protocol -- not pyarrow-specific,
+  see "No pyarrow dependency" below).
 - **`spark-xxhash64-duckdb`** -- a DuckDB loadable extension exposing
   `spark_xxhash64(VARCHAR) -> BIGINT` in SQL, built against DuckDB's new
   stable C Extension API via [`quack-rs`](https://crates.io/crates/quack-rs)
@@ -38,9 +39,9 @@ scale. This is a Cargo workspace with four crates:
 
 The pure-Python `xxhash64()` in the parent package processes one value at a
 time; at scale that's the bottleneck, not the hash algorithm. Hashing an
-entire pyarrow column natively removes essentially all of the per-row
-Python overhead. Measured on this machine (release build, 2M random
-ASCII strings, 5-30 chars each):
+entire Arrow column natively removes essentially all of the per-row Python
+overhead. Measured on this machine (release build, 2M random ASCII strings,
+5-30 chars each):
 
 | Path | Throughput |
 |---|---|
@@ -73,12 +74,47 @@ maturin develop --release
 ```
 
 ```python
-import pyarrow as pa
+import nanoarrow as na
 from pyspark_xxhash64 import arrow as fast
 
-fast.xxhash64_array(pa.array(["hello", "world"]))
-# <pyarrow.lib.Int64Array [-4367754540140381902, ...]>
+result = fast.xxhash64_array(na.Array(["hello", "world"], schema=na.string()))
+na.Array(result).to_pylist()
+# [-4367754540140381902, ...]
 ```
+
+## No pyarrow dependency
+
+Despite the crate/module names (kept for historical reasons -- this started
+as a pyarrow-specific wrapper), neither `spark-xxhash64-pyarrow` nor
+`pyspark_xxhash64.arrow` requires `pyarrow` to be installed. Both directions
+go through the standardized Arrow PyCapsule Interface
+(`__arrow_c_array__`):
+
+- **Input**: `arrow-rs`'s `FromPyArrow` already checks for
+  `__arrow_c_array__` before falling back to a pyarrow-specific import, so
+  a `nanoarrow.Array`, `polars.Series.to_arrow()` result, or anything else
+  implementing the protocol works as-is.
+- **Output** needed an actual fix: `arrow-rs`'s built-in `ToPyArrow` for
+  `ArrayData` unconditionally does `py.import("pyarrow")` to construct the
+  result as a literal `pyarrow.Array`, which would force a `pyarrow`
+  import even for an all-`nanoarrow` caller. `spark-xxhash64-pyarrow`
+  doesn't use that -- it implements the export side of the PyCapsule
+  protocol itself (`ArrowArrayExport` in `src/lib.rs`, including handling
+  `requested_schema` so e.g. `pa.chunked_array(chunks, type=pa.int64())`
+  still works), so the crate never touches pyarrow.
+
+`../tests/test_arrow_fast_nanoarrow.py` proves this with a `nanoarrow`-only
+round trip and a check (only meaningful run in isolation, since other test
+files in the same `pytest` process legitimately do import pyarrow) that
+`pyarrow` never ends up in `sys.modules`. It was also verified by building
+the wheel and running it in a venv with only `nanoarrow` installed, no
+`pyarrow` anywhere -- see that test file's docstring for the command.
+
+`pyspark_xxhash64.arrow.xxhash64_array` still imports `pyarrow` -- but only
+lazily, and only to special-case `pyarrow.ChunkedArray` input (chunking is
+an inherently pyarrow-specific concept, not part of the PyCapsule
+protocol); it's skipped entirely if `pyarrow` isn't installed or the input
+isn't a `ChunkedArray`.
 
 ## Verification
 

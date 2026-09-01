@@ -104,19 +104,26 @@ in the test file:
   different, still-plausible-looking hash. Always match the *actual* Spark
   column type, not the Python value's type.
 
-## Fast path: pyarrow, native Rust
+## Fast path: Arrow, native Rust
 
 The pure-Python `xxhash64()` above processes one value at a time -- fine for
-small data, a bottleneck at scale. For a whole pyarrow column hashed
-natively (no per-row Python overhead, ~175x faster on strings), see
-[`rust/`](rust/):
+small data, a bottleneck at scale. For a whole Arrow column hashed natively
+(no per-row Python overhead, ~175x faster on strings), see [`rust/`](rust/).
+No `pyarrow` dependency -- both directions go through the standardized
+[Arrow PyCapsule Interface](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html),
+so `nanoarrow` (much lighter than pyarrow) works just as well:
 
 ```python
-import pyarrow as pa
+import nanoarrow as na
 from pyspark_xxhash64 import arrow as fast
 
-fast.xxhash64_array(pa.array(["hello", "world"]))
+result = fast.xxhash64_array(na.Array(["hello", "world"], schema=na.string()))
+na.Array(result).to_pylist()
 ```
+
+(`pyarrow.Array` works identically if that's what you're already using --
+`fast.xxhash64_array` doesn't care which Arrow implementation produced its
+input, and its return value works with any of them too.)
 
 Requires building the `spark-xxhash64-pyarrow` extension with maturin (see
 `rust/README.md`); it's an optional extra, not a dependency of the base
